@@ -1,7 +1,7 @@
-// app.js - UI Bindings, Audio Playback, and Interactivity
+// app.js - UI Bindings, Audio Playback, and Real-time Korvai Visualizer
 import { ratioTables, melakartaChakras, gatiList } from './js/data.js';
 import { melaToSwaras, freq, cents, commaStack, solveKorvai } from './js/math.js';
-import { playNote, playScale, startDrone, stopDrone, hit, scheduleEvents, stopScheduler } from './js/audio.js';
+import { playNote, playScale, startDrone, stopDrone, scheduleEvents } from './js/audio.js';
 
 const saHz = 240;
 let isDroneActive = false;
@@ -13,15 +13,13 @@ const melaNameDisplay = document.getElementById('melaNameDisplay');
 const playScaleBtn = document.getElementById('playScaleBtn');
 const droneBtn = document.getElementById('droneBtn');
 
-// app.js (Melakarta UI & Audio Section Update)
-
 function getCurrentScaleFrequencies() {
   const n = parseInt(melaInput.value) || 1;
   const clampedN = Math.max(1, Math.min(72, n));
   const melaData = melaToSwaras(clampedN);
   
   return melaData.semitonesList.map(semitone => {
-    if (semitone === 12) return saHz * 2; // Upper Sa octave multiplier
+    if (semitone === 12) return saHz * 2;
     const ratio = ratioTables.ji[semitone];
     return freq(saHz, ratio);
   });
@@ -56,19 +54,17 @@ function updateMelakarta() {
     swaraGrid.appendChild(card);
   });
 }
+
 melaInput.addEventListener('input', updateMelakarta);
 updateMelakarta();
 
 playScaleBtn.addEventListener('click', () => {
-  const freqs = getCurrentScaleFrequencies(); // [S, R, G, M, P, D, N, S_upper]
-  
-  // Ascend up to S_upper, play S_upper twice, then descend back down to S
+  const freqs = getCurrentScaleFrequencies();
   const fullCycle = [
     ...freqs, 
-    freqs[freqs.length - 1], // Second S_upper
-    ...freqs.slice(0, -1).reverse() // N down to S
+    freqs[freqs.length - 1], 
+    ...freqs.slice(0, -1).reverse()
   ];
-
   playScale(fullCycle, 140);
 });
 
@@ -118,23 +114,88 @@ commaDisplay.innerHTML = `
   <div class="flex justify-between"><span class="text-slate-400">Cents Difference:</span> <span class="font-mono text-amber-400 font-bold">${comma.cents} ¢</span></div>
 `;
 
-// --- 3. Korvai Solver & Playback Handler ---
+// --- 3. Korvai Solver, Visualizer & Playback Handler ---
 const korvaiAksharas = document.getElementById('korvaiAksharas');
 const korvaiGati = document.getElementById('korvaiGati');
 const korvaiAvartanas = document.getElementById('korvaiAvartanas');
 const solveBtn = document.getElementById('solveBtn');
 const korvaiResults = document.getElementById('korvaiResults');
+const korvaiVisualizer = document.getElementById('korvaiVisualizer');
+
+let tokenElements = [];
+
+function renderVisualizer(tokens) {
+  korvaiVisualizer.innerHTML = '';
+  tokenElements = [];
+  tokens.forEach(t => {
+    const span = document.createElement('div');
+    span.className = `px-2 py-1 rounded text-xs font-mono transition-all ${
+      t.type === 'phrase' ? 'bg-slate-800 text-amber-300 border border-slate-700' :
+      t.type === 'gap' ? 'bg-slate-900 text-slate-600' : 'bg-amber-500 text-slate-950 font-bold'
+    }`;
+    span.textContent = t.text;
+    korvaiVisualizer.appendChild(span);
+    tokenElements.push(span);
+  });
+}
+
+function highlightToken(index) {
+  tokenElements.forEach((el, idx) => {
+    if (idx === index) {
+      el.classList.add('ring-2', 'ring-amber-400', 'scale-110', 'bg-amber-400', 'text-slate-950');
+      el.classList.remove('bg-slate-800', 'text-amber-300', 'bg-slate-900', 'text-slate-600', 'bg-amber-500');
+    } else {
+      el.classList.remove('ring-2', 'ring-amber-400', 'scale-110', 'bg-amber-400', 'text-slate-950');
+      const text = el.textContent;
+      if (text === '·') {
+        el.className = 'px-2 py-1 rounded text-xs font-mono transition-all bg-slate-900 text-slate-600';
+      } else if (text === 'Sama') {
+        el.className = 'px-2 py-1 rounded text-xs font-mono transition-all bg-amber-500 text-slate-950 font-bold';
+      } else {
+        el.className = 'px-2 py-1 rounded text-xs font-mono transition-all bg-slate-800 text-amber-300 border border-slate-700';
+      }
+    }
+  });
+}
+
+function clearHighlights() {
+  tokenElements.forEach(el => {
+    el.classList.remove('ring-2', 'ring-amber-400', 'scale-110', 'bg-amber-400', 'text-slate-950');
+    const text = el.textContent;
+    if (text === '·') {
+      el.className = 'px-2 py-1 rounded text-xs font-mono transition-all bg-slate-900 text-slate-600';
+    } else if (text === 'Sama') {
+      el.className = 'px-2 py-1 rounded text-xs font-mono transition-all bg-amber-500 text-slate-950 font-bold';
+    } else {
+      el.className = 'px-2 py-1 rounded text-xs font-mono transition-all bg-slate-800 text-amber-300 border border-slate-700';
+    }
+  });
+}
 
 function playKorvai(p, g) {
-  stopScheduler();
-  const tempoBpm = 110;
-  const beatTime = 60 / tempoBpm;
-  const subBeatTime = beatTime / 4; // Chatusra subdivision reference
+  const tempoBpm = 80;
+  const subBeatTime = (60 / tempoBpm) / 4; 
+
+  // Get active Gati syllables (e.g., Chatusra = ['ta', 'ka', 'di', 'mi'])
+  const gatiVal = parseInt(korvaiGati.value) || 4;
+  let activeSyllables = gatiList.chatusra.syllables;
+  if (gatiVal === 3) activeSyllables = gatiList.tishra.syllables;
+  else if (gatiVal === 5) activeSyllables = gatiList.khanda.syllables;
+  else if (gatiVal === 7) activeSyllables = gatiList.mishra.syllables;
+  else if (gatiVal === 9) activeSyllables = gatiList.sankeerna.syllables;
+
+  // 1. Build a single base phrase of length 'p' using the Gati syllables
+  const singlePhrase = [];
+  for (let i = 0; i < p; i++) {
+    singlePhrase.push(activeSyllables[i % activeSyllables.length]);
+  }
 
   const events = [];
+  const visualTokens = [];
   let currentTime = 0;
+  let tokenIdx = 0;
 
-  // Standard 3-repetition Korvai structure: Phrase(p) + Gap(g) + Phrase(p) + Gap(g) + Phrase(p) [landing on Sama]
+  // Pattern Structure: Phrase(p) + Gap(g) + Phrase(p) + Gap(g) + Phrase(p)
   const patternStructure = [
     { type: 'phrase', count: p },
     { type: 'gap', count: g },
@@ -143,23 +204,57 @@ function playKorvai(p, g) {
     { type: 'phrase', count: p }
   ];
 
-  patternStructure.forEach((block, blockIdx) => {
-    for (let i = 0; i < block.count; i++) {
-      events.push({
-        time: currentTime,
-        type: block.type === 'phrase' ? 'syllable' : 'wave'
-      });
-      currentTime += subBeatTime;
+  patternStructure.forEach((block) => {
+    if (block.type === 'phrase') {
+      // Repeat the EXACT same singlePhrase for every phrase block
+      for (let i = 0; i < block.count; i++) {
+        const sollu = singlePhrase[i];
+        events.push({
+          time: currentTime,
+          type: 'sollu',
+          sollu: sollu,
+          tokenIndex: tokenIdx
+        });
+        visualTokens.push({ text: sollu, type: 'phrase', index: tokenIdx });
+        tokenIdx++;
+        currentTime += subBeatTime;
+      }
+    } else {
+      // Exact silent gaps (represented as '·' rests)
+      for (let i = 0; i < block.count; i++) {
+        events.push({
+          time: currentTime,
+          type: 'gap',
+          sollu: 'rest',
+          tokenIndex: tokenIdx
+        });
+        visualTokens.push({ text: '·', type: 'gap', index: tokenIdx });
+        tokenIdx++;
+        currentTime += subBeatTime;
+      }
     }
   });
 
-  // Final Samam hit (clap / sama)
+  // Final Samam resolution strike
   events.push({
     time: currentTime,
-    type: 'sama'
+    type: 'sama',
+    sollu: 'c',
+    tokenIndex: tokenIdx
   });
+  visualTokens.push({ text: 'Sama', type: 'sama', index: tokenIdx });
 
-  scheduleEvents(events);
+  renderVisualizer(visualTokens);
+
+  scheduleEvents(
+    events, 
+    (ev) => {
+      highlightToken(ev.tokenIndex);
+    },
+    () => {
+      clearHighlights();
+    }
+  );
 }
 
 function runKorvaiSolver() {
