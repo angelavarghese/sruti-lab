@@ -12,7 +12,7 @@
     <!-- Header -->
     <header class="border-b border-slate-700 pb-4">
       <h1 class="text-3xl font-bold text-amber-400">Carnatic Music, Tuning & Rhythm Playground</h1>
-      <p class="text-slate-400 text-sm mt-1">Interactive demo for Melakarta scales, Just Intonation vs 12-TET, Comma Stack, and Korvai solver with audio synthesis.</p>
+      <p class="text-slate-400 text-sm mt-1">Interactive demo for Melakarta scales, Just Intonation vs 12-TET, Comma Stack, and Tihai solver with audio synthesis.</p>
     </header>
 
     <!-- Melakarta Explorer -->
@@ -58,9 +58,9 @@
       </div>
     </section>
 
-    <!-- Korvai Solver -->
+    <!-- korvai Solver -->
     <section class="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700">
-      <h2 class="text-xl font-semibold mb-4 text-amber-300">3. Korvai Solver & Playback</h2>
+      <h2 class="text-xl font-semibold mb-4 text-amber-300">3. Tihai Solver & Playback</h2>
       <div class="grid grid-cols-3 gap-4 mb-4">
         <div>
           <label class="text-xs text-slate-400 block mb-1">Aksharas (e.g., 8 for Adi)</label>
@@ -83,17 +83,76 @@
           <!-- Populated via app.js -->
         </div>
       </div>
-      <!-- Inside index.html under Section 3 (Korvai Solver) -->
+      <!-- Inside index.html under Section 3 (korvai Solver) -->
       <div class="mt-4">
-        <h3 class="text-sm font-medium text-slate-300 mb-2">Active Korvai Visualizer <span class="text-xs text-slate-500">(Highlights live during playback):</span></h3>
+        <h3 class="text-sm font-medium text-slate-300 mb-2">Active Tihai Visualizer <span class="text-xs text-slate-500">(Highlights live during playback):</span></h3>
         <div id="korvaiVisualizer" class="flex flex-wrap gap-1.5 p-3 bg-slate-900 rounded border border-slate-700 min-h-[55px] items-center">
           <span class="text-xs text-slate-500">Click any (p, g) solution above to visualize and play.</span>
         </div>
       </div>
     </section>
+    <!-- Strudel Live-Coding Sandbox Section -->
+    <section class="mt-8 bg-slate-900 border border-slate-700 rounded-xl p-4">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-bold text-amber-400">Strudel Live-Coding Sandbox (Gatis & Adi Tala)</h2>
+        <div class="flex gap-2">
+          <button id="runStrudelBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-3 py-1 rounded text-xs transition cursor-pointer">
+            Evaluate Code (Ctrl+Enter)
+          </button>
+          <button id="stopStrudelBtn" class="bg-rose-600 hover:bg-rose-500 text-white font-semibold px-3 py-1 rounded text-xs transition cursor-pointer">
+            Stop (Hush)
+          </button>
+        </div>
+      </div>
+      
+      <!-- Live Interactive Stroke Badges -->
+      <div class="flex flex-wrap gap-2 mb-3 p-2 bg-slate-950 rounded border border-slate-800">
+        <span class="text-xs text-slate-400 flex items-center pr-2">Live Stroke Monitor:</span>
+        <span data-sollu="bheem" class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">bheem</span>
+        <span data-sollu="cha"   class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">cha</span>
+        <span data-sollu="dheem" class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">dheem</span>
+        <span data-sollu="dhin"  class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">dhin</span>
+        <span data-sollu="num"   class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">num</span>
+        <span data-sollu="ta"    class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">ta</span>
+        <span data-sollu="tha"   class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">tha</span>
+        <span data-sollu="tham"  class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">tham</span>
+        <span data-sollu="thi"   class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">thi</span>
+        <span data-sollu="thom"  class="px-2 py-0.5 bg-slate-800 rounded font-mono text-xs transition">thom</span>
+      </div>
 
+      <!-- Editable Text Area Editor -->
+      <textarea id="strudelEditor" class="w-full h-64 bg-slate-950 text-amber-200 font-mono text-xs p-3 rounded border border-slate-800 focus:outline-none focus:border-amber-500 resize-y" spellcheck="false">
+      // Authentic Adi Tala + Chathusra Gati Pattern
+      const adiTala = s("bheem ta ta ta dheem thom dheem thom")
+        .gain("1.2 0.5 0.5 0.5 0.9 0.6 0.9 0.6");
+
+      const mridangam = s("tha ta thi tham, dhin ta dheem ta");
+
+      stack(
+        adiTala,
+        mridangam.gain(0.9)
+      ).cpm(80)
+
+      // --- Preset Examples (Uncomment to play) ---
+
+      // 1. Tisra Gati (3 Subdivisions)
+      // stack(
+      //   s("bheem ta ta dheem thom thom").gain("1.2 0.5 0.5 0.9 0.6 0.6"),
+      //   s("tha thi ta, thom tha num, bheem ta tha")
+      // ).cpm(75)
+
+      // 2. Decreasing Pattern (7->1) with Tala
+      // stack(
+      //   s("bheem*7 bheem*6 bheem*5 bheem*4 bheem*3 bheem*2 bheem*1").fast(32),
+      //   s("bd cp:1 cp:1 cp:1 bd cp:2 bd cp:2").gain("1.2 0.3 0.3 0.3 0.9 0.4 0.9 0.4").hpf(800)
+      // ).cps(1/8)
+      </textarea>
+    </section>
+    <!-- Include official Strudel Web Script -->
+    <script src="https://unpkg.com/@strudel/web@1.0.3"></script>
   </div>
-
+  
   <script type="module" src="./app.js"></script>
 </body>
 </html>
+      

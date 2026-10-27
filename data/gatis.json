@@ -1,0 +1,43 @@
+{
+  "chathusra": {
+    "name": "Chathusra Gati",
+    "subdivisions": 4,
+    "patterns": [
+      ["tha", "ta", "thi", "tham"],
+      ["dhin", "ta", "dheem", "ta"]
+    ]
+  },
+  "tisra": {
+    "name": "Tisra Gati",
+    "subdivisions": 3,
+    "patterns": [
+      ["tha", "thi", "ta"],
+      ["thom", "tha", "num"],
+      ["bheem", "ta", "tha"]
+    ]
+  },
+  "misra": {
+    "name": "Misra Gati",
+    "subdivisions": 7,
+    "patterns": [
+      ["tha", "thi", "ta", "tha", "ta", "thi", "tham"],
+      ["thom", "cha", "num", "dhin", "ta", "dheem", "ta"]
+    ]
+  },
+  "khanda": {
+    "name": "Khanda Gati",
+    "subdivisions": 5,
+    "patterns": [
+      ["tha", "ta", "tha", "thi", "ta"],
+      ["dhin", "num", "bheem", "ta", "tha"]
+    ]
+  },
+  "sankeerna": {
+    "name": "Sankeerna Gati",
+    "subdivisions": 9,
+    "patterns": [
+      ["tha", "ta", "thi", "tham", "tha", "ta", "tha", "thi", "ta"],
+      ["dhin", "cha", "dheem", "cha", "thom", "tha", "num", "thi", "ta"]
+    ]
+  }
+}

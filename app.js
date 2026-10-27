@@ -1,10 +1,12 @@
 // app.js - UI Bindings, Audio Playback, and Real-time Korvai Visualizer
 import { ratioTables, melakartaChakras, gatiList } from './js/data.js';
 import { melaToSwaras, freq, cents, commaStack, solveKorvai } from './js/math.js';
-import { playNote, playScale, startDrone, stopDrone, scheduleEvents } from './js/audio.js';
+import { playNote, playScale, startDrone, stopDrone, scheduleEvents, loadStrokes } from './js/audio.js';
 
 const saHz = 240;
 let isDroneActive = false;
+
+const tuningSelect = document.getElementById('tuningSelect');
 
 // --- 1. Melakarta UI & Audio Handler ---
 const melaInput = document.getElementById('melaInput');
@@ -18,10 +20,14 @@ function getCurrentScaleFrequencies() {
   const clampedN = Math.max(1, Math.min(72, n));
   const melaData = melaToSwaras(clampedN);
   
+  const selectedTuning = tuningSelect.value;
+  const table = ratioTables[selectedTuning];
+
   return melaData.semitonesList.map(semitone => {
     if (semitone === 12) return saHz * 2;
-    const ratio = ratioTables.ji[semitone];
-    return freq(saHz, ratio);
+    const item = table[semitone];
+    const ratio = (typeof item === 'object' && item !== null) ? item.num / item.den : item;
+    return saHz * ratio;
   });
 }
 
@@ -36,11 +42,11 @@ function updateMelakarta() {
 
   swaraGrid.innerHTML = '';
   const swaraKeys = ['S', 'R', 'G', 'M', 'P', 'D', 'N', 'S_upper'];
+  const freqs = getCurrentScaleFrequencies();
 
-  swaraKeys.forEach(key => {
+  swaraKeys.forEach((key, idx) => {
     const swaraObj = melaData.swaras[key];
-    const semitone = swaraObj.semitone;
-    const hz = semitone === 12 ? saHz * 2 : freq(saHz, ratioTables.ji[semitone]);
+    const hz = Math.round(freqs[idx] * 10) / 10;
 
     const card = document.createElement('div');
     card.className = 'bg-slate-900 border border-slate-700 rounded-lg p-3 flex flex-col items-center justify-between cursor-pointer hover:border-amber-400 transition';
@@ -54,6 +60,11 @@ function updateMelakarta() {
     swaraGrid.appendChild(card);
   });
 }
+
+tuningSelect.addEventListener('change', () => {
+  updateTuning();
+  updateMelakarta();
+});
 
 melaInput.addEventListener('input', updateMelakarta);
 updateMelakarta();
@@ -85,7 +96,6 @@ droneBtn.addEventListener('click', () => {
 });
 
 // --- 2. Tuning & Comma Demo Handler ---
-const tuningSelect = document.getElementById('tuningSelect');
 const tuningDetails = document.getElementById('tuningDetails');
 const commaDisplay = document.getElementById('commaDisplay');
 
@@ -134,6 +144,12 @@ function renderVisualizer(tokens) {
       t.type === 'gap' ? 'bg-slate-900 text-slate-600' : 'bg-amber-500 text-slate-950 font-bold'
     }`;
     span.textContent = t.text;
+    
+    // Attach data-sollu attribute for dynamic live highlighting
+    if (t.text && t.text !== '·') {
+      span.setAttribute('data-sollu', t.text.toLowerCase());
+    }
+
     korvaiVisualizer.appendChild(span);
     tokenElements.push(span);
   });
@@ -172,11 +188,12 @@ function clearHighlights() {
   });
 }
 
-function playKorvai(p, g) {
+async function playKorvai(p, g) {
+  await loadStrokes();
+
   const tempoBpm = 80;
   const subBeatTime = (60 / tempoBpm) / 4; 
 
-  // Get active Gati syllables (e.g., Chatusra = ['ta', 'ka', 'di', 'mi'])
   const gatiVal = parseInt(korvaiGati.value) || 4;
   let activeSyllables = gatiList.chatusra.syllables;
   if (gatiVal === 3) activeSyllables = gatiList.tishra.syllables;
@@ -184,7 +201,6 @@ function playKorvai(p, g) {
   else if (gatiVal === 7) activeSyllables = gatiList.mishra.syllables;
   else if (gatiVal === 9) activeSyllables = gatiList.sankeerna.syllables;
 
-  // 1. Build a single base phrase of length 'p' using the Gati syllables
   const singlePhrase = [];
   for (let i = 0; i < p; i++) {
     singlePhrase.push(activeSyllables[i % activeSyllables.length]);
@@ -195,7 +211,6 @@ function playKorvai(p, g) {
   let currentTime = 0;
   let tokenIdx = 0;
 
-  // Pattern Structure: Phrase(p) + Gap(g) + Phrase(p) + Gap(g) + Phrase(p)
   const patternStructure = [
     { type: 'phrase', count: p },
     { type: 'gap', count: g },
@@ -206,7 +221,6 @@ function playKorvai(p, g) {
 
   patternStructure.forEach((block) => {
     if (block.type === 'phrase') {
-      // Repeat the EXACT same singlePhrase for every phrase block
       for (let i = 0; i < block.count; i++) {
         const sollu = singlePhrase[i];
         events.push({
@@ -220,7 +234,6 @@ function playKorvai(p, g) {
         currentTime += subBeatTime;
       }
     } else {
-      // Exact silent gaps (represented as '·' rests)
       for (let i = 0; i < block.count; i++) {
         events.push({
           time: currentTime,
@@ -235,7 +248,6 @@ function playKorvai(p, g) {
     }
   });
 
-  // Final Samam resolution strike
   events.push({
     time: currentTime,
     type: 'sama',
@@ -282,3 +294,140 @@ function runKorvaiSolver() {
 
 solveBtn.addEventListener('click', runKorvaiSolver);
 runKorvaiSolver();
+// --- 4. Strudel Integration & UI Note Highlighting ---
+
+const runStrudelBtn = document.getElementById('runStrudelBtn');
+const stopStrudelBtn = document.getElementById('stopStrudelBtn');
+const strudelEditor = document.getElementById('strudelEditor');
+
+let strudelSamplesLoaded = false;
+
+async function registerMridangamSamples() {
+  if (strudelSamplesLoaded) return;
+  
+  if (typeof samples === 'function') {
+    // 1. Fetch default dirt drum bank for bd, cp, hh
+    await samples('github:tidalcycles/dirt-samples');
+
+    // 2. Register local Mridangam stroke samples
+    await samples({
+      bheem: '../assets/audio/strokes/bheem.wav',
+      cha:   '../assets/audio/strokes/cha.wav',
+      dheem: '../assets/audio/strokes/dheem.wav',
+      dhin:  '../assets/audio/strokes/dhin.wav',
+      num:   '../assets/audio/strokes/num.wav',
+      ta:    '../assets/audio/strokes/ta.wav',
+      tha:   '../assets/audio/strokes/tha.wav',
+      tham:  '../assets/audio/strokes/tham.wav',
+      thi:   '../assets/audio/strokes/thi.wav',
+      thom:  '../assets/audio/strokes/thom.wav'
+    });
+    
+    strudelSamplesLoaded = true;
+    console.log('Strudel drum bank and Mridangam samples loaded.');
+  }
+}
+
+function highlightStrudelSollu(event) {
+  if (!event) return;
+
+  // 1. Extract raw stroke name from all possible Strudel payload shapes
+  let rawValue = '';
+  if (typeof event.value === 'string') {
+    rawValue = event.value;
+  } else if (event.value && typeof event.value.s === 'string') {
+    rawValue = event.value.s;
+  } else if (typeof event.s === 'string') {
+    rawValue = event.s;
+  }
+
+  if (!rawValue) return;
+
+  // Clean string (e.g., "bheem:1" or "  THA  " -> "bheem" / "tha")
+  let solluName = rawValue.split(':')[0].toLowerCase().trim();
+
+  // 2. Map phonetic aliases so UI highlights match available stroke badges
+  const ALIAS_MAP = {
+    'ka': 'ta',
+    'di': 'thi',
+    'dhi': 'thi',
+    'mi': 'num',
+    'ki': 'ta',
+    'nam': 'dhin'
+  };
+
+  if (ALIAS_MAP[solluName]) {
+    solluName = ALIAS_MAP[solluName];
+  }
+
+  // 3. Find matching UI elements
+  const activeElements = document.querySelectorAll(`[data-sollu="${solluName}"]`);
+
+  // 4. Apply highlight animation
+  activeElements.forEach(el => {
+    el.classList.add('ring-2', 'ring-amber-400', 'bg-amber-500', 'text-slate-950');
+    
+    // Remove highlight after 180ms
+    setTimeout(() => {
+      el.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-500', 'text-slate-950');
+    }, 180);
+  });
+}
+
+// --- Initialize Strudel Runtime & Add Button Listeners ---
+
+if (typeof initStrudel === 'function') {
+  initStrudel();
+  registerMridangamSamples();
+}
+
+if (runStrudelBtn && strudelEditor) {
+  runStrudelBtn.addEventListener('click', async () => {
+    await registerMridangamSamples();
+    
+    const code = strudelEditor.value;
+    try {
+      if (typeof evaluate === 'function') {
+        const pattern = await evaluate(code);
+        
+        // Connect event listener to highlight UI notes on trigger/subscription
+        if (pattern) {
+          if (typeof pattern.onTrigger === 'function') {
+            pattern.onTrigger((ev) => highlightStrudelSollu(ev));
+          } else if (typeof pattern.subscribe === 'function') {
+            pattern.subscribe((ev) => highlightStrudelSollu(ev));
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Strudel evaluation error:", err);
+    }
+  });
+
+  // Shortcut key: Ctrl+Enter or Cmd+Enter to execute code
+  strudelEditor.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runStrudelBtn.click();
+    }
+  });
+}
+
+if (stopStrudelBtn) {
+  stopStrudelBtn.addEventListener('click', () => {
+    if (typeof hush === 'function') {
+      hush();
+    }
+    document.querySelectorAll('[data-sollu]').forEach(el => {
+      el.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-500', 'text-slate-950');
+    });
+  });
+}
+
+let audioLoaded = false;
+window.addEventListener('click', async () => {
+  if (!audioLoaded) {
+    await loadStrokes();
+    audioLoaded = true;
+  }
+}, { once: true });

@@ -1,4 +1,20 @@
-// audio.js - Corrected Synthesis for Individual Sollu Timures
+// js/audio.js
+
+const STROKE_FILES = {
+  bheem: '../assets/audio/strokes/bheem.wav',
+  cha:   '../assets/audio/strokes/cha.wav',
+  dheem: '../assets/audio/strokes/dheem.wav',
+  dhin:  '../assets/audio/strokes/dhin.wav',
+  num:   '../assets/audio/strokes/num.wav',
+  ta:    '../assets/audio/strokes/ta.wav',
+  tha:   '../assets/audio/strokes/tha.wav',
+  tham:  '../assets/audio/strokes/tham.wav',
+  thi:   '../assets/audio/strokes/thi.wav',
+  thom:  '../assets/audio/strokes/thom.wav'
+};
+
+const audioBuffers = {};
+let isLoaded = false;
 
 let audioCtx = null;
 let masterGain = null;
@@ -19,6 +35,81 @@ export function initAudio() {
     audioCtx.resume();
   }
   return audioCtx;
+}
+
+export async function loadStrokes() {
+  const ctx = initAudio();
+
+  const loadPromises = Object.entries(STROKE_FILES).map(async ([key, path]) => {
+    try {
+      const response = await fetch(path);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} for path: ${path}`);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        throw new Error(`File at ${path} is HTML (check folder structure)`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength === 0) {
+        throw new Error(`File at ${path} is empty`);
+      }
+
+      audioBuffers[key] = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    } catch (err) {
+      console.error(`Failed to load stroke audio (${key}):`, err.message || err);
+    }
+  });
+
+  await Promise.all(loadPromises);
+  isLoaded = true;
+  console.log('Finished loading stroke audio samples.');
+}
+
+export function hit(type, when = null) {
+  const ctx = initAudio();
+  const startTime = when !== null ? when : ctx.currentTime;
+  let sollu = type.toLowerCase().trim();
+
+  // Return silently for rests and non-audio tokens
+  if (sollu === 'rest' || sollu === '·' || sollu === '' || sollu === 'sama') {
+    return;
+  }
+
+  // Map phonetic aliases to available stroke samples
+  const ALIAS_MAP = {
+    'ka': 'tha',
+    'di': 'thi',
+    'dhi': 'thi',
+    'mi': 'num',
+    'ki': 'ta',
+    'nam': 'dhin'
+  };
+
+  if (ALIAS_MAP[sollu]) {
+    sollu = ALIAS_MAP[sollu];
+  }
+
+  const buffer = audioBuffers[sollu];
+
+  if (!buffer) {
+    console.warn(`No audio buffer loaded for stroke key: "${type}" (mapped to "${sollu}")`);
+    return;
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  const gainNode = ctx.createGain();
+  gainNode.gain.setValueAtTime(1.0, startTime);
+
+  source.connect(gainNode);
+  gainNode.connect(masterGain);
+
+  source.start(startTime);
 }
 
 export function playNote(freq, dur = 0.5, when = null) {
@@ -93,131 +184,6 @@ export function stopDrone() {
   if (droneGain && audioCtx) {
     droneGain.disconnect();
     droneGain = null;
-  }
-}
-
-/**
- * Distinct, non-overlapping acoustic profiles for each sollu
- */
-export function hit(type, when = null) {
-  const ctx = initAudio();
-  const startTime = when !== null ? when : ctx.currentTime;
-  const sollu = type.toLowerCase();
-
-  const osc = ctx.createOscillator();
-  const gainNode = ctx.createGain();
-  const filter = ctx.createBiquadFilter();
-
-  osc.connect(filter);
-  filter.connect(gainNode);
-  gainNode.connect(masterGain);
-
-  if (sollu === 'ta') {
-    // Sharp high-pitched right-head rim stroke (Ta)
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(580, startTime);
-    osc.frequency.exponentialRampToValueAtTime(200, startTime + 0.04);
-
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(1800, startTime);
-    filter.Q.setValueAtTime(4, startTime);
-
-    gainNode.gain.setValueAtTime(0.4, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.045);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.045);
-  } 
-  else if (sollu === 'ka') {
-    // Short, dry, muted slap (Ka)
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(240, startTime);
-    osc.frequency.exponentialRampToValueAtTime(70, startTime + 0.03);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(500, startTime);
-
-    gainNode.gain.setValueAtTime(0.35, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.035);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.035);
-  }
-  else if (sollu === 'di') {
-    // Open middle-register ring (Di)
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(350, startTime);
-    osc.frequency.exponentialRampToValueAtTime(150, startTime + 0.07);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(1100, startTime);
-
-    gainNode.gain.setValueAtTime(0.38, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.075);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.075);
-  }
-  else if (sollu === 'mi') {
-    // Soft trailing resonant tap (Mi)
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(290, startTime);
-    osc.frequency.exponentialRampToValueAtTime(130, startTime + 0.06);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(800, startTime);
-
-    gainNode.gain.setValueAtTime(0.35, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.065);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.065);
-  }
-  else if (sollu === 'ki') {
-    // Ultra-crisp high snap (Ki)
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(700, startTime);
-    osc.frequency.exponentialRampToValueAtTime(300, startTime + 0.03);
-
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(2200, startTime);
-    filter.Q.setValueAtTime(5, startTime);
-
-    gainNode.gain.setValueAtTime(0.3, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.035);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.035);
-  }
-  else if (sollu === 'dhi' || sollu === 'nam') {
-    // Deep resonant bass composite (Dhi / Nam)
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(160, startTime);
-    osc.frequency.exponentialRampToValueAtTime(65, startTime + 0.12);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(450, startTime);
-
-    gainNode.gain.setValueAtTime(0.45, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.13);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.13);
-  }
-  else {
-    // Resolution Sama strike
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(200, startTime);
-    osc.frequency.exponentialRampToValueAtTime(50, startTime + 0.12);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(900, startTime);
-
-    gainNode.gain.setValueAtTime(0.5, startTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.13);
-
-    osc.start(startTime);
-    osc.stop(startTime + 0.13);
   }
 }
 
